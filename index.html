@@ -52,12 +52,12 @@ const f12=t=>{const p=t.split(':').map(Number);return (p[0]%12||12)+':'+pad(p[1]
 const wdOf=d=>(d.getDay()+6)%7+1;
 const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
 let nid=10;
-const S={hospital:'',repeat:'once',start:key(today),days:[wdOf(today)],endType:'never',endDate:'',weeks:4,off:{},msg:'',submitted:false,
-types:{hospital:{on:true,fee:'500',slots:[{id:1,s:'09:00',e:'13:00'},{id:2,s:'17:00',e:'20:00'}]},online:{on:false,fee:'',slots:[{id:3,s:'20:00',e:'22:00'}]},home:{on:false,fee:'',slots:[{id:4,s:'14:00',e:'16:00'}]}}};
+const S={hospital:'',repeat:'once',start:key(today),days:[wdOf(today)],endDate:'',weeks:4,off:{},msg:'',submitted:false,
+types:{hospital:{on:true,fee:'500',slots:[{id:1,s:'09:00',e:'13:00',on:true,max:'20'},{id:2,s:'17:00',e:'20:00',on:true,max:'20'}]},online:{on:false,fee:'',slots:[{id:3,s:'20:00',e:'22:00',on:true,max:'20'}]},home:{on:false,fee:'',slots:[{id:4,s:'14:00',e:'16:00',on:true,max:'20'}]}}};
 const sorted=sl=>sl.slice().sort((a,b)=>mins(a.s)-mins(b.s));
-function slotError(sl){const s=sorted(sl);for(let i=0;i<s.length;i++){if(mins(s[i].e)<=mins(s[i].s))return 'Slot '+(i+1)+' end time must be after its start time.';if(i+1<s.length&&mins(s[i].e)>mins(s[i+1].s))return 'Slot '+(i+1)+' and Slot '+(i+2)+' overlap.'}return ''}
-const times=k=>sorted(S.types[k].slots).map(s=>f12(s.s)+' – '+f12(s.e)).join(' & ');
-function errors(){const e=[],act=META.filter(m=>S.types[m.key].on);if(!S.hospital)e.push('Select a hospital.');if(!act.length)e.push('Enable at least one type.');act.forEach(m=>{const t=S.types[m.key];if(t.fee==='')e.push(m.title+' fee is required.');const x=slotError(t.slots);if(x)e.push(m.title+': '+x)});if(S.repeat==='weekly'&&!S.days.length)e.push('Select at least one day.');return e}
+function slotError(sl){const s=sorted(sl.filter(x=>x.on));for(let i=0;i<s.length;i++){if(mins(s[i].e)<=mins(s[i].s))return 'Slot '+(i+1)+' end time must be after its start time.';if(i+1<s.length&&mins(s[i].e)>mins(s[i+1].s))return 'Slot '+(i+1)+' and Slot '+(i+2)+' overlap.'}return ''}
+const times=k=>sorted(S.types[k].slots.filter(x=>x.on)).map(s=>f12(s.s)+' – '+f12(s.e)+' (max '+s.max+')').join(' & ');
+function errors(){const e=[],act=META.filter(m=>S.types[m.key].on);if(!S.hospital)e.push('Select a hospital.');if(!act.length)e.push('Enable at least one type.');act.forEach(m=>{const t=S.types[m.key];if(t.fee==='')e.push(m.title+' fee is required.');const x=slotError(t.slots);if(x)e.push(m.title+': '+x);if(t.slots.some(q=>q.on&&(q.max===''||+q.max<1)))e.push(m.title+': max appointments must be at least 1.')});if(S.repeat==='weekly'&&!S.days.length)e.push('Select at least one day.');if(S.repeat==='weekly'&&!S.endDate)e.push('Choose an end date.');if(S.repeat==='weekly'&&S.endDate&&pd(S.endDate)<pd(S.start))e.push('End date must be on or after the start date.');return e}
 function render(){
 const st=S,startD=pd(st.start),act=META.filter(m=>st.types[m.key].on);
 let h='<div style="height:56px;display:flex;align-items:center;padding:0 16px;background:#fff;border-bottom:1px solid #cfd9d6;font-weight:600;font-size:16px">Add Schedule</div><div style="padding:4px 16px 0">';
@@ -67,51 +67,50 @@ h+='<div class="sec">REPEAT</div><div class="seg"><button data-a="once" class="'
 h+='<label class="field" style="margin-top:12px">'+(st.repeat==='once'?'Date':'Start date')+'<input class="inp" type="date" data-c="start" value="'+st.start+'"></label>';
 if(st.repeat==='once')h+='<div style="font-size:12px;color:#51615d;margin-top:4px">'+FULL[wdOf(startD)-1]+'</div>';
 else{h+='<div style="display:flex;gap:4px;margin-top:12px;justify-content:space-between">'+WD.map((w,i)=>'<button class="day'+(st.days.includes(i+1)?' on':'')+'" data-a="day" data-i="'+(i+1)+'" aria-label="'+FULL[i]+'">'+w+'</button>').join('')+'</div>';
-h+='<div style="font-size:13px;font-weight:600;margin:16px 0 8px">Ends</div><div style="display:flex;gap:8px;flex-wrap:wrap">'+[['never','Never'],['onDate','On date'],['afterWeeks','After N weeks']].map(p=>'<button class="pill'+(st.endType===p[0]?' on':'')+'" data-a="end" data-t="'+p[0]+'">'+p[1]+'</button>').join('')+'</div>';
-if(st.endType==='onDate')h+='<label class="field" style="margin-top:10px">End date<input class="inp" type="date" data-c="endDate" value="'+st.endDate+'"></label>';
-if(st.endType==='afterWeeks')h+='<label class="field" style="margin-top:10px">Number of weeks<input class="inp" type="number" min="1" data-c="weeks" value="'+st.weeks+'"></label>'}
+h+='<label class="field" style="margin-top:12px">End date<input class="inp" type="date" data-c="endDate" min="'+st.start+'" value="'+st.endDate+'"></label>';
+if(!st.endDate)h+='<div class="err">Choose an end date.</div>';else if(pd(st.endDate)<startD)h+='<div class="err">End date must be on or after the start date.</div>'}
 h+='<div class="sec">AVAILABLE FOR &amp; TIMINGS</div><div style="font-size:12px;color:#51615d;margin:-2px 0 10px 2px">Turn on a type, then set the timings for that type only.</div><div style="display:flex;flex-direction:column;gap:10px">';
 META.forEach(m=>{const t=st.types[m.key];
 h+='<div class="tcard'+(t.on?' on':'')+'"><div class="row"><div style="width:36px;height:36px;border-radius:10px;background:#e0f2ef;display:flex;align-items:center;justify-content:center;flex:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f766e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICON[m.key]+'</svg></div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">'+m.title+'</div><div style="font-size:12px;color:#51615d">'+m.sub+'</div></div><button class="sw'+(t.on?' on':'')+'" data-a="tog" data-k="'+m.key+'" aria-label="'+m.title+'"><i></i></button></div>';
 if(t.on){h+='<label class="field" style="margin-top:12px">Fee (₹)<input class="inp" type="number" min="0" placeholder="e.g. 500" data-c="fee" data-k="'+m.key+'" value="'+t.fee+'"></label>';
 if(st.submitted&&t.fee==='')h+='<div class="err">Fee is required.</div>';
 h+='<div style="font-size:13px;font-weight:600;margin-top:14px">Timings for '+m.title+'</div>';
-sorted(t.slots).forEach((s,i)=>{h+='<div class="slot"><div class="row"><div style="font-size:12px;font-weight:600;color:#51615d;flex:1">Slot '+(i+1)+'</div>'+(t.slots.length>1?'<button class="del" data-a="del" data-k="'+m.key+'" data-id="'+s.id+'" aria-label="Delete slot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>':'')+'</div><div style="display:flex;gap:8px"><label class="field" style="flex:1">Start<input class="inp" type="time" data-c="s" data-k="'+m.key+'" data-id="'+s.id+'" value="'+s.s+'"></label><label class="field" style="flex:1">End<input class="inp" type="time" data-c="e" data-k="'+m.key+'" data-id="'+s.id+'" value="'+s.e+'"></label></div></div>'});
+sorted(t.slots).forEach((s,i)=>{h+='<div class="slot" "><div class="row"><div style="font-size:12px;font-weight:600;color:#51615d;flex:1">Slot '+(i+1)+'</div>'+(t.slots.length>1?'<button class="del" data-a="del" data-k="'+m.key+'" data-id="'+s.id+'" aria-label="Delete slot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>':'')+'</div><div style="display:flex;gap:8px"><label class="field" style="flex:1">Start<input class="inp" type="time" data-c="s" data-k="'+m.key+'" data-id="'+s.id+'" value="'+s.s+'"></label><label class="field" style="flex:1">End<input class="inp" type="time" data-c="e" data-k="'+m.key+'" data-id="'+s.id+'" value="'+s.e+'"></label></div><label class="field" style="margin-top:8px">Max appointments in this slot<input class="inp" type="number" min="1" step="1" placeholder="e.g. 20" data-c="max" data-k="'+m.key+'" data-id="'+s.id+'" value="'+s.max+'"></label>'+(st.submitted&&s.on&&(s.max===''||+s.max<1)?'<div class="err">Enter at least 1.</div>':'')+'</div>'});
 const er=slotError(t.slots);if(er)h+='<div class="err">'+er+'</div>';
 if(t.slots.length<4)h+='<button class="ghost" style="margin-top:10px" data-a="add" data-k="'+m.key+'">+ Add another slot</button>'}
 h+='</div>'});
 h+='</div>';if(st.submitted&&!act.length)h+='<div class="err">Enable at least one type.</div>';
-const head=(st.repeat==='once'?startD.toDateString().slice(0,15):'Every '+st.days.slice().sort().map(d=>WD[d-1]).join(', ')+(st.endType==='never'?' · no end date':st.endType==='onDate'?(st.endDate?' · until '+st.endDate:' · choose an end date'):' · for '+st.weeks+' week'+(st.weeks==1?'':'s')))+' · '+(st.hospital||'Select a hospital');
+const head=(st.repeat==='once'?startD.toDateString().slice(0,15):'Every '+st.days.slice().sort().map(d=>WD[d-1]).join(', ')+(st.endDate?' · until '+st.endDate:' · choose an end date'))+' · '+(st.hospital||'Select a hospital');
 h+='<div style="margin-top:16px;padding:14px;border-radius:12px;background:#e0f2ef;border:1px solid #9fd2cb;font-size:13px;line-height:1.5"><div style="font-weight:600;margin-bottom:4px">'+head+'</div>'+act.map(m=>'<div>'+m.title+': '+times(m.key)+(st.types[m.key].fee!==''?'  (₹'+st.types[m.key].fee+')':'')+'</div>').join('')+'</div>';
-h+='<div class="sec">UPCOMING DAYS</div><div style="font-size:12px;color:#51615d;margin:-2px 0 8px 2px">Tap a type chip to switch it off for just that day. The rest of the series stays the same.</div>';
+h+='<div class="sec">UPCOMING DAYS</div><div style="font-size:12px;color:#51615d;margin:-2px 0 8px 2px">Tap a slot to make it unavailable for just that day. The other slots stay available.</div>';
 const first=startD>today?startD:today;let list=[];
 if(st.repeat==='once'){if(first.getTime()===startD.getTime())list=[startD]}
-else if(st.days.length){let endEx=new Date(9999,0,1);if(st.endType==='onDate'&&st.endDate){endEx=pd(st.endDate);endEx.setDate(endEx.getDate()+1)}if(st.endType==='afterWeeks'){endEx=new Date(startD);endEx.setDate(endEx.getDate()+(Number(st.weeks)||1)*7)}
+else if(st.days.length){let endEx=new Date(1,0,1);if(st.endDate){endEx=pd(st.endDate);endEx.setDate(endEx.getDate()+1)}
 for(let d=new Date(first);d<endEx&&list.length<5;d.setDate(d.getDate()+1))if(st.days.includes(wdOf(d)))list.push(new Date(d))}
 if(!list.length)h+='<div style="font-size:13px">No upcoming days match this schedule.</div>';
-h+='<div style="display:flex;flex-direction:column;gap:8px">'+list.map(d=>{const k=key(d),offN=act.filter(m=>st.off[k+m.key]).length,all=act.length&&offN===act.length;
-return '<div class="card" style="padding:12px"><div class="row" style="justify-content:space-between"><div style="font-size:14px;font-weight:600">'+WD[wdOf(d)-1]+', '+d.getDate()+' '+d.toDateString().slice(4,7)+'</div><span class="badge'+(offN?' x':'')+'">'+(all?'On leave':offN?'Changed':'As scheduled')+'</span></div>'+act.map(m=>'<div class="row" style="margin-top:8px;gap:8px"><button class="chip'+(st.off[k+m.key]?' off':'')+'" data-a="chip" data-x="'+k+m.key+'">'+m.title+'</button><div style="font-size:12px;color:#51615d;flex:1">'+times(m.key)+'</div></div>').join('')+'</div>'}).join('')+'</div>';
+h+='<div style="display:flex;flex-direction:column;gap:8px">'+list.map(d=>{const k=key(d),all=act.flatMap(m=>st.types[m.key].slots),offN=all.filter(x=>st.off[k+'|'+x.id]).length,full=all.length>0&&offN===all.length;
+return '<div class="card" style="padding:12px"><div class="row" style="justify-content:space-between"><div style="font-size:14px;font-weight:600">'+WD[wdOf(d)-1]+', '+d.getDate()+' '+d.toDateString().slice(4,7)+'</div><span class="badge'+(offN?' x':'')+'">'+(full?'On leave':offN?'Changed':'As scheduled')+'</span></div>'+act.map(m=>'<div style="margin-top:10px"><div style="font-size:12px;font-weight:600;color:#51615d">'+m.title+'</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'+sorted(st.types[m.key].slots).map(x=>'<button class="chip'+(st.off[k+'|'+x.id]?' off':'')+'" style="min-height:44px" data-a="chip" data-x="'+k+'|'+x.id+'">'+f12(x.s)+' – '+f12(x.e)+' · max '+x.max+'</button>').join('')+'</div></div>').join('')+'<button class="ghost" style="margin-top:10px;min-height:40px" data-a="leave" data-d="'+k+'">'+(full?'Restore whole day':'Mark whole day off')+'</button></div>'}).join('')+'</div>';
 h+='<button style="margin-top:20px;width:100%;height:52px;border:0;border-radius:26px;background:#0f766e;color:#fff;font:inherit;font-weight:600;font-size:15px;cursor:pointer" data-a="save">Save schedule</button>';
 if(st.msg)h+='<div style="margin-top:10px;font-size:13px;text-align:center;color:'+(st.msg.startsWith('Schedule')?'#0b5a54':'#b42318')+'">'+st.msg+'</div>';
 document.getElementById('app').innerHTML=h+'</div>'}
 const app=document.getElementById('app');
 app.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,k=b.dataset.k;
 if(a==='once')S.repeat='once';
-if(a==='weekly'){S.repeat='weekly';S.days=[wdOf(pd(S.start))]}
+if(a==='weekly'){S.repeat='weekly';S.days=[wdOf(pd(S.start))];if(!S.endDate){const d=pd(S.start);d.setDate(d.getDate()+28);S.endDate=key(d)}}
 if(a==='day'){const i=+b.dataset.i;S.days=S.days.includes(i)?S.days.filter(x=>x!==i):S.days.concat([i])}
-if(a==='end')S.endType=b.dataset.t;
 if(a==='tog')S.types[k].on=!S.types[k].on;
-if(a==='add'){const sl=sorted(S.types[k].slots),sm=Math.min(mins(sl[sl.length-1].e),1320),em=Math.min(sm+120,1439),f=n=>pad(Math.floor(n/60))+':'+pad(n%60);S.types[k].slots.push({id:++nid,s:f(sm),e:f(em)})}
+if(a==='add'){const sl=sorted(S.types[k].slots),sm=Math.min(mins(sl[sl.length-1].e),1320),em=Math.min(sm+120,1439),f=n=>pad(Math.floor(n/60))+':'+pad(n%60);S.types[k].slots.push({id:++nid,s:f(sm),e:f(em),on:true,max:'20'})}
 if(a==='del')S.types[k].slots=S.types[k].slots.filter(x=>x.id!==+b.dataset.id);
+if(a==='leave'){const d=b.dataset.d,all=META.filter(m=>S.types[m.key].on).flatMap(m=>S.types[m.key].slots),full=all.every(x=>S.off[d+'|'+x.id]);all.forEach(x=>{if(full)delete S.off[d+'|'+x.id];else S.off[d+'|'+x.id]=true})}
 if(a==='chip'){const x=b.dataset.x;if(S.off[x])delete S.off[x];else S.off[x]=true}
 if(a==='save'){S.submitted=true;const er=errors();S.msg=er.length?er[0]:'Schedule saved (prototype)'}
 render()});
 app.addEventListener('change',e=>{const c=e.target.dataset.c;if(!c)return;const v=e.target.value,k=e.target.dataset.k,id=+e.target.dataset.id;
 if(c==='hospital')S.hospital=v;
-if(c==='start'&&v){S.start=v;if(S.repeat==='weekly')S.days=[wdOf(pd(v))]}
+if(c==='start'&&v){S.start=v;if(S.repeat==='weekly'){S.days=[wdOf(pd(v))];if(S.endDate&&pd(S.endDate)<pd(v))S.endDate=''}}
 if(c==='endDate')S.endDate=v;
-if(c==='weeks')S.weeks=v;
 if(c==='fee')S.types[k].fee=v;
+if(c==='max')S.types[k].slots.forEach(x=>{if(x.id===id)x.max=v});
 if(c==='s'||c==='e')S.types[k].slots.forEach(x=>{if(x.id===id)x[c]=v});
 render()});
 render();
